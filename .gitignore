@@ -1,0 +1,11 @@
+# Private local overlays (never commit lab-specific or machine-local priors)
+local_config.yaml
+local_overlay.md
+*.local.yaml
+*.local.md
+
+# Python bytecode, test caches & release archives
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/

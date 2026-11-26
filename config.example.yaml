@@ -1,0 +1,15 @@
+# Public example configuration for the Research Audit Skill Suite.
+# Copy this file to `local_config.yaml` (gitignored) to customize defaults
+# for your lab, domain, target venues, or HPC clusters without modifying
+# committed Public Core files.
+
+default_domain: "computational science"
+default_target_venue: ""
+default_venues:
+  - "top domain-specific journal or conference"
+arxiv_categories: []
+hpc_clusters:
+  - "SLURM / HPC cluster"
+prior_art_lookback_years: 6
+stage1b_lookback_years: 3
+default_model: "inherit"
