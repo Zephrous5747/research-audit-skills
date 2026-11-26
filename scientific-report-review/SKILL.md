@@ -1,16 +1,16 @@
 ---
 name: scientific-report-review
 description: >-
-  Four-stage sequential blind multi-agent review of scientific papers, reports,
-  methods, or NSF/NIH grant proposals with a 0-token pre-flight linter and
-  diff-scoped rechecks. Enforces code-first and science-first gating: Stage 0
+  Pre-compute & scientific-validity blind multi-agent audit suite for
+  quantitative/computational research, plus an optional lean manuscript audit
+  and prose pass. Enforces code-first and science-first gating: Stage 0
   (`code-math-alignment` + read-only `--smoke`/`pytest`), Stage 1A (bounded
   `baseline-killer-audit`), Stage 1B (theory/mechanism + live web/arXiv novelty
-  + 1-round Pivot Red-Team), Stage 2 (structure, provenance, claims, precision,
-  figures/refs, and anti-ping-pong compression), and Stage 3 (meaning-preserving
-  grammar/AI-tell editing). Use for pre-flight audits, code-to-math checks,
-  baseline/novelty/reproducibility reviews, compression, prose polishing, or
-  "is this ready to share" checks.
+  + 1-round Pivot Red-Team), Stage 2 (optional lean 3-pillar manuscript audit:
+  skimmability/2-pass reader, provenance/spec-sync + API citation check, and
+  compression), and Stage 3 (optional decoupled prose/formatting polish). Use
+  for pre-HPC code-to-math gates, baseline/novelty/reproducibility reviews,
+  compression, or pre-submission verification.
 ---
 
 # Scientific Report Review (Four-Stage Code-First & Science-First Blind Panel)
@@ -39,18 +39,19 @@ STAGE 1B: Theory, Mechanism, Live Novelty & Supervisor Strategy (2 blind reviewe
            -> Audits each Pivot vs. cheapest baseline, R8 constraints & subfield search (`SURVIVES_RED_TEAM` | `VIABLE_WITH_PATCH` | `NEEDS_FRESH_SCREEN` | `DROP_PIVOT`)
         │
         ▼
-STAGE 2: Structure, Provenance, Claims, Presentation & Compression (`stage2` = 2A+2B; `2a`/`2b` standalone)
-  ──┬──► [2A] Reviewer 1 (`structure_narrative`)      ── Structure, pedagogical flow & motivation
-    ├──► [2A] Reviewer 2 (`reproducibility_code`)     ── Manuscript provenance, seeds, script->table map
-    ├──► [2A] Reviewer 3 (`claims_definitions`)       ── Definitions, assumptions, spec sync & claims
-    ├──► [2A] Reviewer 4 (`prose_style`)              ── Repetitions, pronouns, brackets, `Eq.`/`Fig.` precision
-    ├──► [2A] Reviewer 5 (`figures_refs_format`)      ── `.log`/`.blg` warnings, `.bib`, LaTeX & figure hygiene
-    ├──► [2A] Reviewer 11 (`average_reader`, `flash`, compiled Main+SI PDFs) ── Blind teach-back & drop-off audit (advisory)
-    └──► [2B] Reviewer 10 (`conciseness_editor`)      ── Main+SI cut/merge/demote/archive (anti-ping-pong safe)
+STAGE 2 (Optional Manuscript Side-Product — Lean 3-Pillar Computational-Paper Audit):
+  ──┬──► [Pillar 1 — Skimmability & Narrative]
+    │      Reviewer 1 (`structure_narrative` + 0-token `lint_storyflow_load`)
+    │      Reviewer 11 (`average_reader`, `flash`, automatic 2-pass Main-blind-to-SI skimmer, advisory)
+    ├──► [Pillar 2 — Provenance, Main<->SI Spec Sync & Citations]
+    │      Reviewer 2 (`reproducibility_code` + `.bib`/`.log` lint + `verify_citations.py` arXiv/Crossref check)
+    │      Reviewer 3 (`claims_definitions` — 3-way epistemic separation & Main<->SI spec sync)
+    └──► [Pillar 3 — Compression & Triage]
+           Reviewer 10 (`conciseness_editor` — Main+SI cut/merge/demote/archive, anti-ping-pong safe)
         │
-        ▼  [HARD GATE: Proceed to Stage 3 ONLY after Stages 0, 1, and 2 (2A+2B) are resolved]
-STAGE 3: Natural Prose & Word Editing Pass
-  ──► Reviewer 6 (`grammar_humanizer`, type=`research`) ── Grammar, clause-splitting, AI tells, em-dashes
+        ▼  [HARD GATE: Proceed to Stage 3 ONLY after Stages 0, 1, and 2 are resolved]
+STAGE 3 (Optional Decoupled Polish — opt-in only):
+  ──► Reviewer 6 (`grammar_humanizer`, default Stage 3); R4 (`prose_style`) & R5 (`figures_refs_format`) opt-in via `reviewers`
   ──► Main Agent applies strictly meaning-preserving word edits (zero numbers/equations/cite keys altered)
 ```
 
@@ -83,11 +84,11 @@ STAGE 3: Natural Prose & Word Editing Pass
 Call `run_workflow` with `ScriptPath` resolved to `./scripts/review_panel.py` relative to this `SKILL.md` directory, and `Args` matching [workflow-args-and-recipes.md](./references/workflow-args-and-recipes.md). (Optional gitignored `local_config.yaml` and `local_overlay.md` at `.agents/skills/` or the skill suite root are loaded automatically when present.)
 
 `review_panel.py` automatically:
-1. Runs the 0-token pre-flight linter (`preflight_lint.py`) and attaches scoped `file:line` hits to Reviewers 0, 4, 5, 6, and 10.
+1. Runs the 0-token pre-flight linter (`preflight_lint.py`) and attaches scoped `file:line` hits to Reviewers 0, 1, 2, 4, 5, 6, and 10 (optionally run `python ./scripts/verify_citations.py refs.bib manuscript.tex` before Stage 2 to verify arXiv/Crossref DOIs).
 2. Routes R0 (`self`, read-only `--smoke`/`pytest`), R9 & Stage 1 Pivot Red-Team (`self`, read-only live `search_web`), and all other reviewers (`research`, strict read-only).
 3. Assigns each reviewer a lean per-role JSON schema, runs a bounded 1-round blind **Pivot Red-Team Mini-Pass** whenever Stage 1/1B proposes candidate Pivots, and returns `stage_gate` (`total_p0_p1_count`, `ready_to_advance`), `stage0_gate`, `stage1a_gate`, and `pivot_red_team`.
 
-**Non-Antigravity Hosts (Claude Code / OpenAI Codex):** If `run_workflow` is unavailable, run `python ./scripts/preflight_lint.py <files> --reviewer <id>` via shell, read the exact reviewer scopes/schemas from `./scripts/review_panel.py` (and `./references/`), and dispatch the same isolated parallel read-only subagents using your host's native subagent tool (granting read-only shell to R0, web search to R9 & Phase 2 Pivot Red-Team, and read-only file access to the rest — strictly zero cross-talk).
+**Non-Antigravity Hosts (Claude Code / OpenAI Codex):** `review_panel.py` uses Antigravity's `run_workflow`. On Claude Code or Codex, run `python ./scripts/preflight_lint.py` and `python ./scripts/verify_citations.py` directly via shell, or export exact per-reviewer prompts and JSON schemas for your host's native subagents via `python scripts/export_panel.py export --workflow review --stage <stage> ...` (and evaluate the fail-closed gate with `export_panel.py gate`).
 
 ---
 

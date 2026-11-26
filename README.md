@@ -1,21 +1,38 @@
 # Research Audit Skills
 
-Four AI agent skills for catching **code bugs**, **weak baselines**, **novelty gaps**, and **manuscript issues** before you burn compute or submit a paper.
+**Pre-compute & scientific-validity auditing for quantitative and computational research** — catch broken code-to-math assumptions, handicapped baselines, and scooped ideas *before* burning HPC hours or drafting a paper.
 
-Works with **Antigravity**, **Claude Code**, and **OpenAI Codex**.
+Core pipeline: **Idea Screen → Code-to-Math Gate (Stage 0) → Baseline-Killer Gate (Stage 1A) → Theory, Live Novelty & Pivot Red-Team (Stage 1B)**, plus a lean optional manuscript audit (Stage 2–3) as a companion side-product.
+
+## Why This Exists
+
+Most AI research tools focus on polishing prose. In computational science, the expensive mistakes happen much earlier: silent `except` fallbacks, evaluator leakage, self-sabotaged baselines, or spending three months on an algorithm beaten by a 20-line standard baseline. These skills audit **validity first** using isolated blind reviewers (zero cross-talk) and fail-closed gates.
 
 ## The 4 Skills
 
-| Skill | When to use it | What it checks |
+### Core Pre-Compute & Validity Gates *(Primary Focus)*
+| Skill | When to use it | What it catches |
 | :--- | :--- | :--- |
-| **`idea-novelty-screen`** | Before writing code | Checks literature novelty, theoretical traps, and cheap baselines; outputs a 1-page Go/Pivot/Kill summary. |
-| **`code-math-alignment`** | Right after coding, before big runs | Traces code branches against equations, flags silent fallbacks/clips, and runs a fast local smoke check. |
-| **`baseline-killer-audit`** | After initial pilot results | Tries to beat your headline claim with a simple baseline or catch handicapped/unfair comparisons. |
-| **`scientific-report-review`** | Draft manuscript, report, or grant | Runs blind reviewers in stages: code → baselines & novelty → structure, claims & readability → prose polish. |
+| **`idea-novelty-screen`** | Before writing code | Live arXiv/web overlap, theoretical/scaling traps, cheap baseline floors, and a 1-round blind Pivot Red-Team (outputs a 1-page Go/Pivot/Kill card). |
+| **`code-math-alignment`** *(Stage 0)* | Right after coding, before cluster sweeps | Code-vs.-equation mismatches, silent fallbacks/clips, missing thread locks/atomic writes, evaluator oracle/null-model exploits, and `<10 s` local `--smoke` checks. |
+| **`baseline-killer-audit`** *(Stage 1A)* | After initial pilot results | Tries to break your headline claim with a simple baseline (minimal patch, library call, or ≤ ~50-line textbook baseline) and exposes interaction/budget asymmetries. |
 
-## Install & Update
+### Full Panel & Optional Manuscript Companion
+| Skill | When to use it | What it covers |
+| :--- | :--- | :--- |
+| **`scientific-report-review`** | Full code + draft audit | Orchestrates **Stage 0** + **Stage 1A/1B** (with Pivot Red-Team), plus an **optional slim Stage 2 manuscript audit** across 3 high-signal checks: **(1) Skimmability** (R1 + 2-pass Main-blind-to-SI skimmer + 0-token math-wall linter), **(2) Provenance, Main↔SI Spec Sync & Citations** (R2 + R3 + arXiv/Crossref verifier), and **(3) Compression & Triage** (R10). Micro-style/prose polish (R4/R5/R6) is decoupled as opt-in Stage 3. |
 
-Clone the repo and run the installer for your tool:
+**See real output structure:** [examples/01_idea_screen_kill_card.md](examples/01_idea_screen_kill_card.md) · [examples/02_precompute_stage0_stage1_audit.md](examples/02_precompute_stage0_stage1_audit.md)
+
+## Platform Compatibility (Honest Boundary)
+
+| Component | Antigravity | Claude Code / OpenAI Codex |
+| :--- | :--- | :--- |
+| **`code-math-alignment` & `baseline-killer-audit` (`SKILL.md`)** | Native | Native |
+| **CLI tools (`preflight_lint.py`, `verify_citations.py`)** | Native (Python stdlib) | Native (Python stdlib) |
+| **Parallel multi-agent workflows (`screen_idea.py`, `review_panel.py`)** | Native via `run_workflow` | Export exact prompts/schemas & run fail-closed gates via `scripts/export_panel.py`, then dispatch with your host's subagent tool |
+
+## Quick Install
 
 ```bash
 git clone https://github.com/Zephrous5747/research-audit-skills.git
@@ -26,29 +43,34 @@ python scripts/manage_skills.py install --target antigravity   # ~/.gemini/confi
 # or: --target codex   (~/.codex/skills)
 ```
 
-To update later, run `git pull` and re-run the same `install` command. Your local config files are preserved.
+Update anytime with `git pull` + re-running `install` (existing `local_config.yaml` and `local_overlay.md` are preserved).
 
-## How to Use
+## Quick Usage
 
-Just ask your agent in plain English — it will pick the matching skill automatically:
+**In agent chat (natural language):**
+- *"Screen this idea before I code it: ..."* (`idea-novelty-screen`)
+- *"Run Stage 0 code-to-math audit on `src/` against `methods.tex` before I submit `sbatch`."* (`code-math-alignment`)
+- *"Try to kill our benchmark speedup with a simple baseline."* (`baseline-killer-audit`)
+- *"Run Stage 1B + Stage 2 on `manuscript.tex` and `supplement.tex`."* (`scientific-report-review`)
 
-- *"Screen this research idea before I start coding: ..."* (`idea-novelty-screen`)
-- *"Audit `src/` against the equations in `methods.tex` before I submit cluster jobs."* (`code-math-alignment`)
-- *"Try to break our benchmark speedup with a simple baseline."* (`baseline-killer-audit`)
-- *"Run Stage 2 review on `manuscript.tex` and `supplement.tex`."* (`scientific-report-review`)
-
-## Optional: Customize for Your Group
-
-Inside your installed skills folder, you can optionally add private overrides (never committed):
-
-- Copy `config.example.yaml` → `local_config.yaml` to set your default domain, venues, or arXiv categories.
-- Copy `local_overlay.example.md` → `local_overlay.md` to add group-specific conventions or cluster rules.
-
-If you review a paper outside your default domain, lab defaults are suppressed automatically.
-
-## Verify / Maintain
-
+**Standalone zero-dependency CLI tools (any host or CI):**
 ```bash
-pytest -q tests/test_skills_suite.py          # fast offline checks (<1 s)
-python scripts/manage_skills.py pack          # audit, test, and build clean release zip
+# 0-token code hygiene, LaTeX, and math-wall/storyflow linter
+python scientific-report-review/scripts/preflight_lint.py src/ manuscript.tex refs.bib
+
+# Lightweight arXiv / Crossref / Semantic Scholar citation verifier (use --offline for syntax only)
+python scientific-report-review/scripts/verify_citations.py refs.bib manuscript.tex --format md
+
+# Export exact Stage 1 prompts & JSON schemas for Claude Code / Codex subagents
+python scripts/export_panel.py export --workflow review --stage stage1 --report manuscript.tex --extra-files src/ --out-dir .audit_prompts
+python scripts/export_panel.py gate --stage stage1 --results-dir .audit_results
 ```
+
+## Optional: Lab Customization & Testing
+
+- Copy `config.example.yaml` → `local_config.yaml` (and optionally `local_overlay.example.md` → `local_overlay.md`) inside your installed skills folder to set your group's default domain, venues, or cluster rules. Both are `.gitignore`d and auto-suppressed whenever you audit a paper in a different domain.
+- Verify locally: `pytest -q tests/test_skills_suite.py` (`< 1 s`, zero LLM calls).
+
+## License
+
+[MIT](LICENSE)

@@ -62,7 +62,7 @@ Main Agent verifies citations, enforces No-Repetition & No-Unvetted-Pivots rules
      }
      ```
    - Optional knobs: `scouts`, `candidate_pivots`, `skip_pivot_red_team` (default `false`), `skip_local_overlay` (default `"auto"`, auto-suppressing lab `local_overlay.md` / venues / arXiv categories on cross-domain `domain` overrides), `agent_type` (`"auto"` default), `model` (`"inherit"` default).
-4. **Non-Antigravity Hosts (Claude Code / OpenAI Codex):** If `run_workflow` is unavailable, read the track-routed scout scopes and Phase 2 Pivot Red-Team rubric from `./scripts/screen_idea.py`, spawn the 3 isolated Phase 1 subagents in parallel via your host's native subagent tool (read-only + web search for Scout 3; read-only for Scouts 1–2, zero cross-talk), then run 1 isolated read-only + web-search Phase 2 Pivot Red-Team subagent over Scout 3's candidate Pivots and Phase 1's derived constraints.
+4. **Non-Antigravity Hosts (Claude Code / OpenAI Codex):** `screen_idea.py` uses Antigravity's `run_workflow`. On Claude Code or Codex, run `python scripts/export_panel.py export --workflow screen --track <track> --idea "..." --out-dir .screen_prompts` to generate exact isolated prompts and JSON schemas for your host's native parallel subagents (read-only + web search for Scout 3; read-only for Scouts 1–2, zero cross-talk), then run 1 isolated Pivot Red-Team subagent over Scout 3's candidate Pivots.
 
 ---
 

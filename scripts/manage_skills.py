@@ -43,7 +43,9 @@ PUBLIC_ROOT_FILES = [
     "local_overlay.example.md",
 ]
 REPO_ONLY_ITEMS = [
+    "LICENSE",
     "VERSION",
+    "examples",
     "scripts",
 ]
 

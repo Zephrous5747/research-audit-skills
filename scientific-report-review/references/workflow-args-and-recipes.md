@@ -10,10 +10,10 @@ Invoke `run_workflow` with `ScriptPath` resolved to `<skill_dir>/scripts/review_
 | `stage1a` | `baseline_killer` (R7) | `research` | Bounded 1–3 rounds, immediate early exit on `SOLID_BASELINE` + `p0_p1_count == 0` |
 | `stage1b` | `theory_mechanism_critic` (R8), `supervisor_strategist` (R9) | R8: `research`; R9: `self` (no edits/shell; 2–4 live `search_web` prior-art queries) | Theory/limits/failure modes + live novelty/venue-bar & Referee #2 strategy |
 | `stage1` | R7 + R8 + R9 | R7/R8: `research`; R9: `self` | Combined one-shot Stage 1 if explicitly requested |
-| `stage2` *(default Stage 2)* | R1–R5 + R10 + R11 (`structure_narrative`, `reproducibility_code`, `claims_definitions`, `prose_style`, `figures_refs_format`, `conciseness_editor`, `average_reader` [review only, `flash`]) | `research` | Combined 2A + 2B + blind teach-back in parallel (Main Agent pairs additions against cuts/demotions) |
-| `stage2a` | R1–R5 + R11 (`average_reader` [review only, `flash`]) | `research` | Structure, provenance, claims, textual precision, figures/refs/LaTeX & blind average-reader teach-back |
+| `stage2` *(default Stage 2)* | Lean 3-pillar audit: R1 (`structure_narrative`) + R11 (`average_reader`, 2-pass `flash`) + R2 (`reproducibility_code`) + R3 (`claims_definitions`) + R10 (`conciseness_editor`) | `research` | Optional computational-paper audit: skimmability, provenance/spec-sync & compression (R4/R5 decoupled as opt-in) |
+| `stage2a` | R1 + R2 + R3 + R11 (`average_reader` [review only, `flash`]) | `research` | Skimmability, provenance, Main↔SI spec sync & blind average-reader audit |
 | `stage2b` | `conciseness_editor` (R10) | `research` | Anti-ping-pong Main + SI squeeze alone (e.g., final squeeze right before Stage 3) |
-| `stage3` | `grammar_humanizer` (R6) | `research` | Hard-gated after Stages 0, 1 & 2; grammar, AI-tell removal & natural-prose word edits |
+| `stage3` | `grammar_humanizer` (R6); opt-in R4 (`prose_style`) / R5 (`figures_refs_format`) via `reviewers` | `research` | Optional decoupled prose/formatting polish (hard-gated after Stages 0, 1 & 2) |
 
 ---
 

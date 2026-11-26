@@ -80,13 +80,13 @@ Launched once Stage 1A is closed. Reviewer 9 runs with `type_name="self"` (no fi
 
 ---
 
-## Stage 2 Output Structure — Narrative Structure, Provenance, Claims, Presentation & Compression (`stage2` = 2A + 2B together; `stage2a` / `stage2b` standalone)
+## Stage 2 Output Structure — Optional Lean Computational-Paper Audit (`stage2` = 3 Pillars; `stage2a` / `stage2b` standalone)
 
-**Default (`stage2`):** Runs Stage 2A (Reviewers 1–5) and Stage 2B (Reviewer 10) together in parallel so the Main Agent pairs additive items against compression/demotion in one pass. Either sub-stage can also be invoked standalone (`stage2a` or `stage2b`).
+**Default (`stage2`):** Slimmed to 3 high-signal computational-paper audits running in parallel: (1) **Skimmability & Narrative** (R1 + R11 2-pass `flash` skimmer + 0-token `lint_storyflow_load`), (2) **Provenance, Main↔SI Spec Sync & Citations** (R2 + R3 + `.bib`/`.log` lint + `verify_citations.py` arXiv/Crossref check), and (3) **Compression & Triage** (R10 anti-ping-pong ledger). Repetitive micro-style/formatting passes (`prose_style` R4, `figures_refs_format` R5) are decoupled as opt-in polish via explicit `reviewers=[...]`.
 
-### Stage 2A — Narrative Structure, Completeness, Provenance, Claims & Presentation Gate *(Reviewers 1–5 in parallel, zero cross-talk)*
+### Stage 2A — Skimmability, Provenance & Main↔SI Spec Sync *(R1, R2, R3 + R11 in parallel, zero cross-talk)*
 
-**Active reviewers:** `structure_narrative`, `reproducibility_code`, `claims_definitions`, `prose_style`, `figures_refs_format`, plus `average_reader` (R11, `flash`, compiled Main + SI PDFs preferred, review mode, advisory).
+**Active default reviewers:** `structure_narrative` (R1), `reproducibility_code` (R2), `claims_definitions` (R3), plus `average_reader` (R11, `flash`, compiled Main + SI PDFs preferred, automatic 2-pass Main-only $\to$ Main+SI, review mode, advisory). *(Opt-in via `reviewers`: `prose_style` R4, `figures_refs_format` R5.)*
 
 Produce these sections in order (skip a section only if truly empty — write `"None found"`):
 

@@ -445,12 +445,14 @@ STAGE_DEFAULT_REVIEWERS = {
     "stage1a": ["baseline_killer"],
     "stage1b": ["theory_mechanism_critic", "supervisor_strategist"],
     "stage1": ["baseline_killer", "theory_mechanism_critic", "supervisor_strategist"],
+    # Slimmed Stage 2 default (3 high-signal computational-paper audits; R4/R5/R6 decoupled as opt-in polish):
+    #   1) Skimmability & Narrative: structure_narrative (R1) + average_reader (R11, 2-pass flash)
+    #   2) Provenance, Main<->SI Spec Sync & Citations: reproducibility_code (R2) + claims_definitions (R3)
+    #   3) Compression & Triage: conciseness_editor (R10)
     "stage2": [
         "structure_narrative",
         "reproducibility_code",
         "claims_definitions",
-        "prose_style",
-        "figures_refs_format",
         "conciseness_editor",
         "average_reader",
     ],
@@ -458,8 +460,6 @@ STAGE_DEFAULT_REVIEWERS = {
         "structure_narrative",
         "reproducibility_code",
         "claims_definitions",
-        "prose_style",
-        "figures_refs_format",
         "average_reader",
     ],
     "stage2b": ["conciseness_editor"],
@@ -483,10 +483,10 @@ STAGE_DESCRIPTIONS = {
     "stage1a": "STAGE 1A (Adversarial Baseline-Killer Gate — Bounded 1-3 Rounds Until Zero P0/P1)",
     "stage1b": "STAGE 1B (Domain Theory, Mechanism, Live Novelty & Supervisor Strategy Gate)",
     "stage1": "STAGE 1 (Combined Science Core & PI Supervision Gate — Baselines, Theory/Mechanism & Strategy)",
-    "stage2": "STAGE 2 (Combined 2A + 2B: Structure, Provenance, Claims, Presentation & Main+SI Compression)",
-    "stage2a": "STAGE 2A (Narrative Structure, Completeness, Provenance, Claims & Presentation Gate)",
+    "stage2": "STAGE 2 (Lean Computational-Paper Audit: Skimmability, Provenance/Spec-Sync & Compression)",
+    "stage2a": "STAGE 2A (Skimmability, Provenance & Main<->SI Spec-Sync Audit)",
     "stage2b": "STAGE 2B (Ruthless Compression & Triage Pass — Main Text & SI Squeeze, Anti-Ping-Pong Safe)",
-    "stage3": "STAGE 3 (Grammar, Scholarly Voice & Natural Word Editing Pass)",
+    "stage3": "STAGE 3 (Optional Prose, Formatting & Natural Word Editing Pass)",
 }
 
 STAGE_PHASE_LABELS = {
@@ -605,7 +605,9 @@ REVIEWERS = [
 2. PROVENANCE, ARCHIVE MANIFEST & SCRIPT-TO-TABLE MAPPING:
    - Verify whether an archive/reproducibility manifest maps every manuscript table and figure to its generating script, config, raw data artifact, and commit/version (no orphan numbers or undocumented post-processing).
 3. TEXTBOOK FILLER VS. ACTUAL METHOD: Flag places explaining standard/known algorithms while omitting the authors' own formulation, objective function, or exact parameters needed to reproduce the numbers.
-4. REPORTED VERIFICATION SUMMARY: Check whether the manuscript transparently summarizes what independent verification was performed (analytical checks, exact reference solvers, reference implementations, limiting cases, symmetry checks, regression/smoke tests) without vouching for untested claims.
+4. REPORTED VERIFICATION SUMMARY & CITATION/BUILD HYGIENE:
+   - Check whether the manuscript transparently summarizes what independent verification was performed (analytical checks, exact reference solvers, reference implementations, limiting cases, symmetry checks, regression/smoke tests) without vouching for untested claims.
+   - Audit any 0-token pre-linter `.bib` completeness, `.log`/`.blg` undefined-citation warnings, or supplied `verify_citations.py` API-check reports (flagging missing bibliographic metadata or suspect/mismatched DOIs and arXiv IDs).
 Set `reproducibility_rating` to "sufficient", "mostly_sufficient_minor_gaps", or "insufficient".""",
         "recheck_focus": """Check all prior Stage 2A issues related to manuscript-level reproducibility metadata, seeds, software versions, archive manifests, script-to-table/figure provenance mapping, and reported verification summaries. Reject vague assurances ("available upon request" or "code was tested" with no specifics). Update `reproducibility_rating`.""",
     },

@@ -869,6 +869,10 @@ def format_lint_for_reviewer(lint_report, reviewer_id):
         _add("Math-wall bursts (>=6-line display block or >=3 clustered blocks)", story.get("math_walls"))
         _add("Symbol-density / working-memory spikes (inline math/index burst in one paragraph)", story.get("symbol_density_spikes"))
         _add("Long unanchored prose stretches (>=450 words without heading or figure/table anchor)", story.get("unanchored_long_stretches"))
+    elif reviewer_id == "reproducibility_code":
+        _add("Existing LaTeX/BibTeX .log/.blg warnings", tex.get("latex_build_log_warnings"))
+        _add("Incomplete .bib entries", bib.get("bib_incomplete_entries"))
+        _add("Plot script hygiene (advisory titles, thin linewidth, tiny fontsize)", code.get("plot_script_hygiene"))
     elif reviewer_id == "prose_style":
         _add("Sentence-initial abbreviations (Eq./Fig./Tab./Sec.)", tex.get("sentence_initial_abbreviations"))
         _add("Wordy filler phrases", tex.get("wordy_fillers"))

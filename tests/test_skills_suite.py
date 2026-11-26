@@ -426,14 +426,22 @@ def test_review_panel_stage2_review_prompts_and_overlay_injection(tmp_path, monk
         monkeypatch,
         cwd=tmp_path,
     )
+    # Slim Stage 2 default runs the 3 computational-paper audit pillars (R4/R5 decoupled as opt-in)
+    assert set(seen.keys()) == {
+        "structure_narrative",
+        "reproducibility_code",
+        "claims_definitions",
+        "conciseness_editor",
+        "average_reader",
+    }
     assert "specimen_openings" in seen["structure_narrative"]
     assert "SHORT-ROUTE PARITY" in seen["structure_narrative"]
     assert "single canonical definition in SI" in seen["claims_definitions"]
     assert "three-way epistemic separation" in seen["claims_definitions"]
-    assert "Final printed-size legibility" in seen["figures_refs_format"]
+    assert "verify_citations.py" in seen["reproducibility_code"]
     assert "Flag >2 distinct baselines" not in seen["conciseness_editor"]
     assert "Custom lab style prior: use vector EPS." in seen["structure_narrative"]
-    assert "Custom lab style prior: use vector EPS." in seen["figures_refs_format"]
+    assert "Custom lab style prior: use vector EPS." in seen["reproducibility_code"]
     assert "Custom lab style prior: use vector EPS." in seen["conciseness_editor"]
     # Reviewer 11 (average_reader) checks: flash default, Main+SI only (zero overlay/extra_files/lint), advisory non-blocking
     assert seen_models["average_reader"] == "flash"
@@ -1235,6 +1243,123 @@ def test_review_panel_stage1a_four_tier_verdict_and_p0_escalation(tmp_path, monk
     assert g_b["baseline_verdict"] == "HANDICAPPED_BASELINE_RERUN_REQUIRED"
     assert g_b["can_advance_to_stage1b"] is False
     assert any("STAGE1A_VERDICT_GUARD" in line for line in logs_b)
+
+
+# --- 7. Citation Verifier (arXiv / Crossref / Semantic Scholar) & Cross-Host Export Bridge ---
+
+
+def test_verify_citations_offline_and_mocked_apis(tmp_path):
+    verifier_path = SUITE_ROOT / "scientific-report-review" / "scripts" / "verify_citations.py"
+    spec = importlib.util.spec_from_file_location("verify_citations", str(verifier_path))
+    vc = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(vc)
+
+    bib = tmp_path / "refs.bib"
+    bib.write_text(
+        "@article{good_arxiv,\n"
+        "  author = {Smith, A.},\n"
+        "  title = {Adaptive Variance Reduction for Sparse Linear Solvers},\n"
+        "  year = {2025},\n"
+        "  eprint = {2501.01234},\n"
+        "  archivePrefix = {arXiv},\n"
+        "}\n"
+        "@article{bad_year_doi,\n"
+        "  author = {Lee, B.},\n"
+        "  title = {Fast Matrix Preconditioning},\n"
+        "  year = {2019},\n"
+        "  doi = {10.1000/test.doi},\n"
+        "}\n"
+        "@article{ghost_paper,\n"
+        "  author = {Fake, C.},\n"
+        "  title = {Nonexistent Quantum Magic Paper},\n"
+        "  year = {2026},\n"
+        "}\n"
+        "@article{good_arxiv,\n"
+        "  title = {Duplicate key entry},\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    tex = tmp_path / "paper.tex"
+    tex.write_text(r"\cite{good_arxiv,missing_key_99}", encoding="utf-8")
+
+    # Offline structural + undefined-cite audit
+    off = vc.verify_citations([str(bib), str(tex)], offline=True)
+    assert off["duplicate_bib_keys"] == ["good_arxiv"]
+    assert off["undefined_cite_keys"] == ["missing_key_99"]
+    assert off["counts"].get("MISSING_FIELDS", 0) >= 1
+
+    # Mocked live APIs (arXiv Atom XML + Crossref DOI + Crossref title miss)
+    def fake_fetcher(url: str, timeout: float = 8.0) -> bytes:
+        if "export.arxiv.org" in url:
+            return (
+                b'<?xml version="1.0" encoding="UTF-8"?>'
+                b'<feed xmlns="http://www.w3.org/2005/Atom">'
+                b"<entry>"
+                b"<id>http://arxiv.org/abs/2501.01234v1</id>"
+                b"<published>2025-01-05T00:00:00Z</published>"
+                b"<title>Adaptive Variance Reduction for Sparse Linear Solvers</title>"
+                b"</entry></feed>"
+            )
+        if "api.crossref.org/works/10.1000" in url:
+            return json.dumps(
+                {
+                    "message": {
+                        "DOI": "10.1000/test.doi",
+                        "title": ["Fast Matrix Preconditioning"],
+                        "issued": {"date-parts": [[2024]]},
+                    }
+                }
+            ).encode("utf-8")
+        if "api.crossref.org/works?" in url:
+            return json.dumps({"message": {"items": []}}).encode("utf-8")
+        raise AssertionError(f"Unexpected URL {url}")
+
+    live = vc.verify_citations([str(bib), str(tex)], offline=False, delay=0.0, fetcher=fake_fetcher)
+    by_key = {}
+    for r in live["results"]:
+        by_key.setdefault(r["key"], []).append(r["status"])
+    assert "VERIFIED" in by_key["good_arxiv"]
+    assert by_key["bad_year_doi"] == ["TITLE_OR_YEAR_MISMATCH"]
+    assert by_key["ghost_paper"] == ["NOT_FOUND_SUSPECT"]
+
+
+def test_export_panel_cross_host_cli_and_gate(tmp_path):
+    exporter_path = SUITE_ROOT / "scripts" / "export_panel.py"
+    if not exporter_path.is_file():
+        pytest.skip("export_panel.py lives in the packaged repo root")
+
+    spec = importlib.util.spec_from_file_location("export_panel", str(exporter_path))
+    ep = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(ep)
+
+    draft = tmp_path / "draft.tex"
+    draft.write_text("\\begin{document}\\section{Intro}Test.\\end{document}\n", encoding="utf-8")
+    out_dir = tmp_path / "exported_stage1"
+    manifest = ep.export_prompts(
+        "review",
+        {"stage": "stage1", "report": [str(draft)], "domain": "numerical linear algebra"},
+        out_dir,
+        cwd=tmp_path,
+    )
+    assert manifest["agent_count"] == 3
+    ids = [a["id"] for a in manifest["agents"]]
+    assert ids == ["baseline_killer", "theory_mechanism_critic", "supervisor_strategist"]
+    for a in manifest["agents"]:
+        assert (out_dir / a["prompt_file"]).is_file()
+        assert (out_dir / a["schema_file"]).is_file()
+
+    # Fail-closed gate check on collected results
+    gate_fail = ep.evaluate_gate(
+        "stage1a",
+        [{"reviewer_id": "baseline_killer", "baseline_verdict": "HANDICAPPED_BASELINE_RERUN_REQUIRED", "p0_p1_count": 1}],
+    )
+    assert gate_fail["ready_to_advance"] is False
+    gate_pass = ep.evaluate_gate(
+        "stage1a",
+        [{"reviewer_id": "baseline_killer", "baseline_verdict": "SOLID_BASELINE", "p0_p1_count": 0}],
+    )
+    assert gate_pass["ready_to_advance"] is True
+
 
 
 
