@@ -29,6 +29,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_SKILL_DIRS = [
     "baseline-killer-audit",
     "code-math-alignment",
+    "idea-falsification-loop",
     "idea-novelty-screen",
     "scientific-report-review",
 ]

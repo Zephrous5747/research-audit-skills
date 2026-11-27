@@ -13,6 +13,7 @@ import pytest
 SUITE_ROOT = Path(__file__).resolve().parents[1]
 SCREEN_SCRIPT = SUITE_ROOT / "idea-novelty-screen" / "scripts" / "screen_idea.py"
 REVIEW_SCRIPT = SUITE_ROOT / "scientific-report-review" / "scripts" / "review_panel.py"
+LOOP_SCRIPT = SUITE_ROOT / "idea-falsification-loop" / "scripts" / "run_idea_loop.py"
 LINTER_SCRIPT = SUITE_ROOT / "scientific-report-review" / "scripts" / "preflight_lint.py"
 
 
@@ -726,7 +727,7 @@ def test_agent_skills_standard_compliance_and_links():
     import yaml
 
     skill_mds = sorted(SUITE_ROOT.glob("*/SKILL.md"))
-    assert len(skill_mds) == 4
+    assert len(skill_mds) == 5
     md_link_re = re.compile(r"\[[^\]]+\]\((\.\.?/[^)#]+)")
 
     for smd in skill_mds:
@@ -747,8 +748,8 @@ def test_agent_skills_standard_compliance_and_links():
             resolved = (smd.parent / rel_target).resolve()
             assert resolved.exists(), f"{smd}: broken relative link '{rel_target}'"
 
-    # Both scripts must include .claude/skills and .codex/skills in _skill_root_candidates
-    for script_path in (SCREEN_SCRIPT, REVIEW_SCRIPT):
+    # All workflow scripts must include .claude/skills and .codex/skills in _skill_root_candidates
+    for script_path in (SCREEN_SCRIPT, REVIEW_SCRIPT, LOOP_SCRIPT):
         src = script_path.read_text(encoding="utf-8")
         assert '".claude"' in src and '".codex"' in src, f"{script_path} missing cross-platform skill roots"
 
@@ -1359,6 +1360,368 @@ def test_export_panel_cross_host_cli_and_gate(tmp_path):
         [{"reviewer_id": "baseline_killer", "baseline_verdict": "SOLID_BASELINE", "p0_p1_count": 0}],
     )
     assert gate_pass["ready_to_advance"] is True
+
+    # Loop workflow export carries graveyard + constraints cleanly for Claude Code / Codex
+    loop_out = tmp_path / "exported_loop"
+    loop_manifest = ep.export_prompts(
+        "loop",
+        {
+            "problem_space": "Fast sparse preconditioning",
+            "domain": "numerical linear algebra",
+            "track": "numerical_algorithm",
+            "initial_graveyard": [{"round": 1, "idea_title": "DeadIdea", "killed_at": "idea_novelty_screen", "failure_mode": "Beaten by ILU(0)"}],
+            "initial_constraints": ["Must beat ILU(0) on total matvec cost"],
+        },
+        loop_out,
+        cwd=tmp_path,
+    )
+    assert loop_manifest["agent_count"] == 1
+    assert loop_manifest["agents"][0]["id"] == "idea_generator"
+    gen_prompt = (loop_out / loop_manifest["agents"][0]["prompt_file"]).read_text(encoding="utf-8")
+    assert "DeadIdea" in gen_prompt and "Must beat ILU(0) on total matvec cost" in gen_prompt
+
+
+# --- 8. Idea Falsification Loop (`idea-falsification-loop`) Fail-Closed State Machine ---
+
+
+def test_idea_loop_compile_and_manage_skills_discovery(tmp_path):
+    src = LOOP_SCRIPT.read_text(encoding="utf-8")
+    compile(src, str(LOOP_SCRIPT), "exec", flags=ast.PyCF_ALLOW_TOP_LEVEL_AWAIT)
+
+    mgr_path = SUITE_ROOT / "scripts" / "manage_skills.py"
+    if not mgr_path.is_file():
+        pytest.skip("manage_skills.py lives in the packaged repo root")
+
+    spec = importlib.util.spec_from_file_location("manage_skills", str(mgr_path))
+    mgr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mgr)
+    assert "idea-falsification-loop" in mgr.PUBLIC_SKILL_DIRS
+
+    dst = tmp_path / "host_skills"
+    dst.mkdir()
+    (dst / "local_config.yaml").write_text("keep: true\n", encoding="utf-8")
+
+    class _Args:
+        target = str(dst)
+
+    assert mgr.cmd_install(_Args()) == 0
+    assert (dst / "idea-falsification-loop" / "SKILL.md").is_file()
+    assert (dst / "idea-falsification-loop" / "scripts" / "run_idea_loop.py").is_file()
+    assert (dst / "local_config.yaml").read_text(encoding="utf-8") == "keep: true\n"
+
+
+def test_idea_loop_max_rounds_cap_and_blocked_offline_halt(tmp_path, monkeypatch):
+    def noop_agent(prompt, schema, role, type_name, model):
+        raise AssertionError("Should fail validation before invoking any agent")
+
+    for bad_rounds in (0, 6):
+        with pytest.raises(ValueError, match="hard cap"):
+            _run_workflow_script(
+                LOOP_SCRIPT,
+                {"problem_space": "Sparse eigensolvers", "domain": "numerical linear algebra", "max_rounds": bad_rounds},
+                noop_agent,
+                monkeypatch,
+                cwd=tmp_path,
+            )
+
+    # Offline search on hard-novelty track -> immediate BLOCKED_OFFLINE halt at Round 1
+    gen_rounds = []
+
+    def fake_offline(prompt, schema, role, type_name, model):
+        if "Idea Generator" in (role or ""):
+            gen_rounds.append(role)
+            return {
+                "idea_title": "Offline Idea 1",
+                "core_mechanism": "m",
+                "exact_claim": "c",
+                "why_cheap_baseline_fails": "b",
+                "day1_falsification_test": "t",
+                "non_overlap_attestation": "Initial proposal",
+                "pitch_markdown": "Pitch 1",
+            }
+        if "scout_id='literature_novelty_strategist'" in prompt:
+            return {
+                "scout_id": "literature_novelty_strategist",
+                "scout_role": role,
+                "summary": "offline",
+                "fatal_blocker_count": 0,
+                "key_risks": [],
+                "live_search_status": "blocked_or_offline",
+                "novelty_verdict": "CLEAR_NOVELTY_ABOVE_BAR",
+                "irreducible_novelty_wedge": "w",
+                "prior_art_hits": [],
+                "referee2_premortem": "Two sentences.",
+                "pivot_options": [],
+            }
+        sid = "baseline_feasibility_killer" if "baseline_feasibility_killer" in prompt else "theory_limits_critic"
+        out = {"scout_id": sid, "scout_role": role, "summary": "ok", "fatal_blocker_count": 0, "key_risks": []}
+        if sid == "baseline_feasibility_killer":
+            out.update({"strongest_cheap_baseline": "b", "day1_pilots": []})
+        else:
+            out.update({"scaling_and_bounds_summary": "s", "predicted_failure_modes": []})
+        return out
+
+    data, _ = _run_workflow_script(
+        LOOP_SCRIPT,
+        {
+            "problem_space": "Sparse eigensolvers",
+            "domain": "numerical linear algebra",
+            "track": "numerical_algorithm",
+            "max_rounds": 3,
+            "run_day1_pilot": False,
+        },
+        fake_offline,
+        monkeypatch,
+        cwd=tmp_path,
+    )
+    assert data["terminal_status"] == "BLOCKED_OFFLINE"
+    assert data["rounds_run"] == 1
+    assert len(gen_rounds) == 1
+    assert data["survivor"] is None
+
+
+def test_idea_loop_graveyard_constraints_propagation_overlay_suppression_and_cutoff(tmp_path, monkeypatch):
+    _write_lab_overlay(tmp_path)
+    gen_prompts = []
+    lit_prompts = []
+    round_num = {"n": 0}
+
+    def fake_agent(prompt, schema, role, type_name, model):
+        if "Idea Generator" in (role or ""):
+            round_num["n"] += 1
+            gen_prompts.append(prompt)
+            r = round_num["n"]
+            return {
+                "idea_title": f"Candidate_R{r}",
+                "core_mechanism": f"mech_{r}",
+                "exact_claim": f"claim_{r}",
+                "why_cheap_baseline_fails": "baseline trap",
+                "day1_falsification_test": "<60s CPU toy test",
+                "non_overlap_attestation": "distinct" if r > 1 else "Initial proposal",
+                "pitch_markdown": f"Pitch for Candidate_R{r}",
+            }
+        if "Pivot Red-Team" in (role or ""):
+            return {
+                "live_search_status": "searched_live",
+                "summary": "0/1 survived",
+                "pivot_audit": [
+                    {
+                        "pivot_title": "R1_Weak_Pivot",
+                        "strongest_cheap_baseline": "15-line Krylov CRN",
+                        "primary_math_or_scaling_trap": "Winner-curse bias O(sqrt(log M / N))",
+                        "pivot_verdict": "DROP_PIVOT",
+                        "one_line_patch": "N/A",
+                    }
+                ],
+                "design_space_constraints": [
+                    "Must beat 15-line Krylov CRN on total matvec count.",
+                    "Must enforce strict sample splitting to avoid winner-curse bias.",
+                ],
+            }
+        if "scout_id='literature_novelty_strategist'" in prompt:
+            lit_prompts.append(prompt)
+            if round_num["n"] == 1:
+                return {
+                    "scout_id": "literature_novelty_strategist",
+                    "scout_role": role,
+                    "summary": "Scooped in Round 1",
+                    "fatal_blocker_count": 1,
+                    "key_risks": [],
+                    "live_search_status": "searched_live",
+                    "novelty_verdict": "LIKELY_SCOOPED_OR_SUBSUMED",
+                    "irreducible_novelty_wedge": "none",
+                    "prior_art_hits": [],
+                    "referee2_premortem": "Scooped.",
+                    "pivot_options": [{"pivot_title": "R1_Weak_Pivot", "core_twist": "t", "why_stronger": "w", "theorem_or_experiment_hook": "h"}],
+                }
+            return {
+                "scout_id": "literature_novelty_strategist",
+                "scout_role": role,
+                "summary": "Clear wedge in Round 2",
+                "fatal_blocker_count": 0,
+                "key_risks": [],
+                "live_search_status": "searched_live",
+                "novelty_verdict": "CLEAR_NOVELTY_ABOVE_BAR",
+                "irreducible_novelty_wedge": "unique wedge",
+                "prior_art_hits": [],
+                "referee2_premortem": "Check conditioning.",
+                "pivot_options": [],
+            }
+        sid = "baseline_feasibility_killer" if "baseline_feasibility_killer" in prompt else "theory_limits_critic"
+        fatal = 1 if round_num["n"] == 1 else 0
+        out = {"scout_id": sid, "scout_role": role, "summary": f"{sid} r{round_num['n']}", "fatal_blocker_count": fatal, "key_risks": []}
+        if sid == "baseline_feasibility_killer":
+            out.update({"strongest_cheap_baseline": "15-line Krylov CRN", "day1_pilots": []})
+        else:
+            out.update({"scaling_and_bounds_summary": "s", "predicted_failure_modes": []})
+        return out
+
+    data, _ = _run_workflow_script(
+        LOOP_SCRIPT,
+        {
+            "problem_space": "Exoplanet RV sparse periodogram acceleration",
+            "domain": "astrophysics / exoplanet radial-velocity",
+            "track": "numerical_algorithm",
+            "max_rounds": 4,
+            "run_day1_pilot": False,
+            "cutoff_year": 2024,
+        },
+        fake_agent,
+        monkeypatch,
+        cwd=tmp_path,
+    )
+    assert data["terminal_status"] == "SURVIVOR_FOUND"
+    assert data["rounds_run"] == 2
+    assert data["survivor"]["idea_title"] == "Candidate_R2"
+    assert len(data["graveyard"]) == 1
+    assert data["graveyard"][0]["idea_title"] == "Candidate_R1"
+    # Round 2 Generator received GRAVEYARD + accumulated constraints + anti-repackaging rule
+    assert "Candidate_R1" in gen_prompts[1]
+    assert "Must beat 15-line Krylov CRN on total matvec count." in gen_prompts[1]
+    assert "STRICTLY BAN repackaging" in gen_prompts[1]
+    # Cross-domain skip_local_overlay="auto" suppressed lab overlay in both loop & delegated screen_idea.py
+    assert data["local_overlay_loaded"]["applied"] is False
+    assert data["local_overlay_loaded"]["skipped_reason"] == "cross_domain_override"
+    for p in gen_prompts + lit_prompts:
+        assert "Quantum lab sentinel" not in p
+        assert "PRX Quantum" not in p
+    # cutoff_year=2024 passed cleanly into screen_idea.py
+    assert data["cutoff_year"] == 2024
+    assert all("2024-12-31" in p for p in lit_prompts)
+
+
+def test_idea_loop_day1_pilot_fail_closed_stage0_stage1a_and_exhausted(tmp_path, monkeypatch):
+    # Scenario A: 3 rounds with run_day1_pilot=True
+    #   Round 1: Stage 0 blocked_by_permission -> rejected to GRAVEYARD (no same-round patch)
+    #   Round 2: Stage 0 passes, Stage 1A p0_count=1 -> rejected to GRAVEYARD
+    #   Round 3: Stage 0 passes + Stage 1A MECHANISM_SOLID_PARITY_FIX_NEEDED with p0_count=0 -> SURVIVOR_FOUND
+    r_state = {"n": 0}
+
+    def fake_pilot_loop(prompt, schema, role, type_name, model):
+        if "Idea Generator" in (role or ""):
+            r_state["n"] += 1
+            r = r_state["n"]
+            return {
+                "idea_title": f"PilotIdea_R{r}",
+                "core_mechanism": "m",
+                "exact_claim": "c",
+                "why_cheap_baseline_fails": "b",
+                "day1_falsification_test": "t",
+                "non_overlap_attestation": "distinct",
+                "pitch_markdown": f"Pitch R{r}",
+            }
+        if "scout_id='literature_novelty_strategist'" in prompt:
+            return {
+                "scout_id": "literature_novelty_strategist",
+                "scout_role": role,
+                "summary": "clear",
+                "fatal_blocker_count": 0,
+                "key_risks": [],
+                "live_search_status": "searched_live",
+                "novelty_verdict": "CLEAR_NOVELTY_ABOVE_BAR",
+                "irreducible_novelty_wedge": "w",
+                "prior_art_hits": [],
+                "referee2_premortem": "Check scaling.",
+                "pivot_options": [],
+            }
+        if "scout_id='baseline_feasibility_killer'" in prompt or "scout_id='theory_limits_critic'" in prompt:
+            sid = "baseline_feasibility_killer" if "baseline_feasibility_killer" in prompt else "theory_limits_critic"
+            out = {"scout_id": sid, "scout_role": role, "summary": "ok", "fatal_blocker_count": 0, "key_risks": []}
+            if sid == "baseline_feasibility_killer":
+                out.update({"strongest_cheap_baseline": "b", "day1_pilots": []})
+            else:
+                out.update({"scaling_and_bounds_summary": "s", "predicted_failure_modes": []})
+            return out
+        if "Day-1 Pilot Builder" in (role or ""):
+            return {
+                "script_path": "",
+                "report_path": "",
+                "repro_command": "python pilot.py",
+                "smoke_command": "python pilot.py --smoke",
+                "runtime_seconds": 12.5,
+                "toy_comparison_summary": "2.4x faster than baseline",
+                "failure_boundary_conditions": "Breaks for dense rank-1 matrices",
+                "pilot_status": "completed_under_60s",
+            }
+        if "reviewer_id='code_math_auditor'" in prompt:
+            ex = "blocked_by_permission" if r_state["n"] == 1 else "executed_passed"
+            return {
+                "reviewer_id": "code_math_auditor",
+                "reviewer_role": role,
+                "summary": "s0",
+                "findings": [],
+                "stage0_verdict": "ALIGNED_FAIL_LOUD",
+                "p0_p1_count": 0,
+                "stage0_closed": True,
+                "execution_status": ex,
+            }
+        if "reviewer_id='baseline_killer'" in prompt:
+            if r_state["n"] == 2:
+                return {
+                    "reviewer_id": "baseline_killer",
+                    "reviewer_role": role,
+                    "summary": "P0 handicap",
+                    "findings": [],
+                    "baseline_verdict": "MECHANISM_SOLID_PARITY_FIX_NEEDED",
+                    "p0_count": 1,
+                    "p0_p1_count": 1,
+                    "stage1a_closed": False,
+                }
+            return {
+                "reviewer_id": "baseline_killer",
+                "reviewer_role": role,
+                "summary": "Discovery with minor P1 table tweak",
+                "findings": [],
+                "baseline_verdict": "MECHANISM_SOLID_PARITY_FIX_NEEDED",
+                "p0_count": 0,
+                "p0_p1_count": 1,
+                "stage1a_closed": False,
+            }
+        raise AssertionError(f"Unexpected role {role}")
+
+    data_a, _ = _run_workflow_script(
+        LOOP_SCRIPT,
+        {
+            "problem_space": "Fast sparse preconditioning",
+            "domain": "numerical linear algebra",
+            "track": "numerical_algorithm",
+            "max_rounds": 3,
+            "run_day1_pilot": True,
+        },
+        fake_pilot_loop,
+        monkeypatch,
+        cwd=tmp_path,
+    )
+    assert data_a["terminal_status"] == "SURVIVOR_FOUND"
+    assert data_a["rounds_run"] == 3
+    assert [g["killed_at"] for g in data_a["graveyard"]] == [
+        "stage0_code_math_alignment",
+        "stage1a_baseline_killer",
+    ]
+    assert data_a["survivor"]["idea_title"] == "PilotIdea_R3"
+    assert data_a["survivor"]["stage0_gate"]["stage0_closed"] is True
+    assert data_a["survivor"]["stage1a_gate"]["p0_count"] == 0
+
+    # Scenario B: Exhausted after max_rounds=2 -> EXHAUSTED_NO_SURVIVOR with consolidated graveyard
+    r_state["n"] = 0
+    data_b, _ = _run_workflow_script(
+        LOOP_SCRIPT,
+        {
+            "problem_space": "Fast sparse preconditioning",
+            "domain": "numerical linear algebra",
+            "track": "numerical_algorithm",
+            "max_rounds": 2,
+            "run_day1_pilot": True,
+        },
+        fake_pilot_loop,
+        monkeypatch,
+        cwd=tmp_path,
+    )
+    assert data_b["terminal_status"] == "EXHAUSTED_NO_SURVIVOR"
+    assert data_b["rounds_run"] == 2
+    assert data_b["survivor"] is None
+    assert len(data_b["graveyard"]) == 2
+
 
 
 

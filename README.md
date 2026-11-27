@@ -8,12 +8,13 @@ Core pipeline: **Idea Screen → Code-to-Math Gate (Stage 0) → Baseline-Killer
 
 Most AI research tools focus on polishing prose. In computational science, the expensive mistakes happen much earlier: silent `except` fallbacks, evaluator leakage, self-sabotaged baselines, or spending three months on an algorithm beaten by a 20-line standard baseline. These skills audit **validity first** using isolated blind reviewers (zero cross-talk) and fail-closed gates.
 
-## The 4 Skills
+## The 5 Skills
 
 ### Core Pre-Compute & Validity Gates *(Primary Focus)*
 | Skill | When to use it | What it catches |
 | :--- | :--- | :--- |
 | **`idea-novelty-screen`** | Before writing code | Live arXiv/web overlap, theoretical/scaling traps, cheap baseline floors, and a 1-round blind Pivot Red-Team (outputs a 1-page Go/Pivot/Kill card). |
+| **`idea-falsification-loop`** | Exploring a new problem space | Bounded autonomous Generator + Falsification loop (`max_rounds <= 5`) chaining `idea-novelty-screen` and optional `<60 s` CPU Day-1 pilots gated by Stage 0 & Stage 1A, maintaining a `GRAVEYARD` to block repackaging killed ideas. |
 | **`code-math-alignment`** *(Stage 0)* | Right after coding, before cluster sweeps | Code-vs.-equation mismatches, silent fallbacks/clips, missing thread locks/atomic writes, evaluator oracle/null-model exploits, and `<10 s` local `--smoke` checks. |
 | **`baseline-killer-audit`** *(Stage 1A)* | After initial pilot results | Tries to break your headline claim with a simple baseline (minimal patch, library call, or ≤ ~50-line textbook baseline) and exposes interaction/budget asymmetries. |
 
@@ -30,7 +31,7 @@ Most AI research tools focus on polishing prose. In computational science, the e
 | :--- | :--- | :--- |
 | **`code-math-alignment` & `baseline-killer-audit` (`SKILL.md`)** | Native | Native |
 | **CLI tools (`preflight_lint.py`, `verify_citations.py`)** | Native (Python stdlib) | Native (Python stdlib) |
-| **Parallel multi-agent workflows (`screen_idea.py`, `review_panel.py`)** | Native via `run_workflow` | Export exact prompts/schemas & run fail-closed gates via `scripts/export_panel.py`, then dispatch with your host's subagent tool |
+| **Parallel multi-agent workflows (`screen_idea.py`, `review_panel.py`, `run_idea_loop.py`)** | Native via `run_workflow` | Export exact prompts/schemas & run fail-closed gates via `scripts/export_panel.py`, then dispatch with your host's subagent tool |
 
 ## Quick Install
 
@@ -49,6 +50,7 @@ Update anytime with `git pull` + re-running `install` (existing `local_config.ya
 
 **In agent chat (natural language):**
 - *"Screen this idea before I code it: ..."* (`idea-novelty-screen`)
+- *"Run a 3-round idea falsification loop in numerical linear algebra for sparse preconditioners (paper-only)."* (`idea-falsification-loop`)
 - *"Run Stage 0 code-to-math audit on `src/` against `methods.tex` before I submit `sbatch`."* (`code-math-alignment`)
 - *"Try to kill our benchmark speedup with a simple baseline."* (`baseline-killer-audit`)
 - *"Run Stage 1B + Stage 2 on `manuscript.tex` and `supplement.tex`."* (`scientific-report-review`)

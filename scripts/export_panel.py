@@ -29,6 +29,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SCREEN_SCRIPT = REPO_ROOT / "idea-novelty-screen" / "scripts" / "screen_idea.py"
 REVIEW_SCRIPT = REPO_ROOT / "scientific-report-review" / "scripts" / "review_panel.py"
+LOOP_SCRIPT = REPO_ROOT / "idea-falsification-loop" / "scripts" / "run_idea_loop.py"
 
 ADVISORY_REVIEWERS = {"average_reader"}
 
@@ -41,18 +42,25 @@ def _extract_id(prompt: str, role: str) -> str:
     m = re.search(r"(?:reviewer_id|scout_id)='([^']+)'", prompt or "")
     if m:
         return m.group(1)
+    if "Idea Generator" in (role or ""):
+        return "idea_generator"
     return _slug(role)
 
 
 def export_prompts(workflow: str, args_dict: dict, out_dir: Path, cwd: Path | None = None) -> dict:
     """Execute workflow script with a prompt-capturing shim (zero LLM calls)."""
-    script_path = SCREEN_SCRIPT if workflow == "screen" else REVIEW_SCRIPT
+    script_map = {"screen": SCREEN_SCRIPT, "review": REVIEW_SCRIPT, "loop": LOOP_SCRIPT}
+    script_path = script_map[workflow]
     if not script_path.is_file():
         raise FileNotFoundError(f"Workflow script not found: {script_path}")
 
     # Skip Phase 2 Pivot Red-Team during dry export (it depends on Phase 1 candidate Pivots)
     export_args = dict(args_dict)
-    export_args.setdefault("skip_pivot_red_team", True)
+    if workflow == "loop":
+        export_args["max_rounds"] = 1
+        export_args["run_day1_pilot"] = False
+    else:
+        export_args.setdefault("skip_pivot_red_team", True)
 
     src = script_path.read_text(encoding="utf-8")
     indented = "\n".join("    " + line for line in src.splitlines())
@@ -71,21 +79,33 @@ def export_prompts(workflow: str, args_dict: dict, out_dir: Path, cwd: Path | No
     def _agent(prompt=None, schema=None, role=None, type_name="self", workspace="inherit", model=None):
         async def _coro():
             aid = _extract_id(prompt or "", role or "")
-            captured.append(
-                {
-                    "id": aid,
-                    "role": role or aid,
-                    "agent_type": type_name,
-                    "model": model or "inherit",
-                    "requires_shell": aid == "code_math_auditor",
-                    "requires_web_search": aid in ("supervisor_strategist", "literature_novelty_strategist"),
-                    "prompt": prompt or "",
-                    "schema": schema or {},
-                }
-            )
+            is_loop_downstream = (workflow == "loop") and (aid != "idea_generator")
+            if not is_loop_downstream:
+                captured.append(
+                    {
+                        "id": aid,
+                        "role": role or aid,
+                        "agent_type": type_name,
+                        "model": model or "inherit",
+                        "requires_shell": aid == "code_math_auditor",
+                        "requires_web_search": aid in ("supervisor_strategist", "literature_novelty_strategist"),
+                        "prompt": prompt or "",
+                        "schema": schema or {},
+                    }
+                )
             # Minimal stub payload satisfying downstream gate aggregation during export
             stub = {"summary": "exported", "findings": [], "key_risks": [], "fatal_blocker_count": 0}
-            if workflow == "screen":
+            if aid == "idea_generator":
+                return {
+                    "idea_title": "Exported Round Idea",
+                    "core_mechanism": "stub",
+                    "exact_claim": "stub",
+                    "why_cheap_baseline_fails": "stub",
+                    "day1_falsification_test": "stub",
+                    "non_overlap_attestation": "stub",
+                    "pitch_markdown": "Exported pitch stub",
+                }
+            if workflow in ("screen", "loop"):
                 stub.update({"scout_id": aid, "scout_role": role or aid})
                 if aid == "literature_novelty_strategist":
                     stub.update({"live_search_status": "searched_live", "novelty_verdict": "CLEAR_NOVELTY_ABOVE_BAR", "pivot_options": []})
@@ -223,15 +243,18 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_exp = sub.add_parser("export", help="Export exact per-agent prompts and JSON schemas")
-    p_exp.add_argument("--workflow", choices=("review", "screen"), required=True)
+    p_exp.add_argument("--workflow", choices=("review", "screen", "loop"), required=True)
     p_exp.add_argument("--out-dir", required=True, help="Output directory for prompts, schemas, and manifest.json")
     p_exp.add_argument("--stage", default="stage0", help="Stage for --workflow review (stage0, stage1a, stage1b, stage1, stage2, stage3)")
     p_exp.add_argument("--mode", default="review", choices=("review", "recheck"))
     p_exp.add_argument("--report", nargs="*", default=[], help="Manuscript / spec file path(s)")
     p_exp.add_argument("--extra-files", nargs="*", default=[], help="Code, configs, tests, .bib, or SI file(s)")
-    p_exp.add_argument("--track", default="auto", help="Track for --workflow screen (numerical_algorithm, pure_theory, engineering_portfolio, auto)")
+    p_exp.add_argument("--track", default="auto", help="Track for --workflow screen/loop (numerical_algorithm, pure_theory, engineering_portfolio, auto)")
     p_exp.add_argument("--idea", default="", help="Idea pitch text for --workflow screen")
     p_exp.add_argument("--idea-files", nargs="*", default=[], help="Idea note file(s) for --workflow screen")
+    p_exp.add_argument("--problem-space", default="", help="Target problem space for --workflow loop")
+    p_exp.add_argument("--graveyard-json", default="", help="Optional JSON file with {graveyard: [...], design_space_constraints: [...]} for --workflow loop")
+    p_exp.add_argument("--cutoff-year", type=int, default=None, help="Optional temporal cutoff year for screen/review/loop")
     p_exp.add_argument("--domain", default="", help="Explicit research domain (auto-suppresses mismatched local overlay)")
     p_exp.add_argument("--target-venue", default="", help="Target venue or agency")
     p_exp.add_argument("--args-json", default="", help="Optional JSON file with full workflow Args overrides")
@@ -254,12 +277,22 @@ def main() -> int:
                 payload["report"] = args.report
             if args.extra_files:
                 payload["extra_files"] = args.extra_files
+        elif args.workflow == "loop":
+            payload.setdefault("track", "numerical_algorithm" if args.track == "auto" else args.track)
+            if args.problem_space:
+                payload["problem_space"] = args.problem_space
+            if args.graveyard_json:
+                gdata = json.loads(Path(args.graveyard_json).read_text(encoding="utf-8"))
+                payload["initial_graveyard"] = gdata.get("graveyard", [])
+                payload["initial_constraints"] = gdata.get("design_space_constraints", [])
         else:
             payload.setdefault("track", args.track)
             if args.idea:
                 payload["idea"] = args.idea
             if args.idea_files:
                 payload["idea_files"] = args.idea_files
+        if args.cutoff_year is not None:
+            payload["cutoff_year"] = args.cutoff_year
         if args.domain:
             payload["domain"] = args.domain
         if args.target_venue:
