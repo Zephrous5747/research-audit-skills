@@ -8,6 +8,13 @@ Core pipeline: **Idea Screen → Code-to-Math Gate (Stage 0) → Baseline-Killer
 
 Most AI research tools focus on polishing prose. In computational science, the expensive mistakes happen much earlier: silent `except` fallbacks, evaluator leakage, self-sabotaged baselines, or spending three months on an algorithm beaten by a 20-line standard baseline. These skills audit **validity first** using isolated blind reviewers (zero cross-talk) and fail-closed gates.
 
+### Design Principle: One-Way, Report-Once Isolation (No Agent-to-Agent Chat)
+
+Every reviewer runs as an **isolated, one-shot, schema-bound report** — never a multi-turn conversation between reviewers or with the main agent:
+- **Zero agent-to-agent chat** prevents compounding hallucinations, sycophantic drift, and wasted time cleaning up circular debates.
+- **One-way return only** — each reviewer inspects the artifacts independently, emits a single structured JSON report, and terminates; the main agent verifies and synthesizes once.
+- **Recommendation when customizing or running on Claude Code / Codex:** keep this boundary intact — dispatch every exported reviewer prompt as a single-turn, report-once subagent rather than a conversational loop.
+
 ## The 5 Skills
 
 ### Core Pre-Compute & Validity Gates *(Primary Focus)*
